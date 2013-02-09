@@ -18,33 +18,35 @@
 # limitations under the License.
 #
 
-node.set[:apache][:listen_ports] = node[:apache][:listen_ports] | Array(node[:reprepro][:listen_port])
+#node.set[:apache][:listen_ports] = node[:apache][:listen_ports] | Array(node[:reprepro][:listen_port])
 
+include_recipe "aws_ebs_disk"
 include_recipe "build-essential"
 include_recipe "apache2"
 
 unless(node[:reprepro][:disable_databag])
   begin
-    apt_repo = data_bag_item("reprepro", "main")
+    app_environment = node["app_environment"] || "development"
+    apt_repo = data_bag_item("reprepro", app_environment)
     node[:reprepro].keys.each do |key|
       next if key.to_sym == :pgp
       # NOTE: Use #has_key? so data bags can nil out existing values
       node.default[:reprepro][key] = apt_repo[key] if apt_repo.has_key?(key)
     end
-    node.default[:reprepro][:pgp_email] = apt_repo['pgp']['email']
-    node.default[:reprepro][:pgp_fingerprint] = apt_repo['pgp']['fingerprint']
+    node.default[:reprepro][:pgp_email] = apt_repo['pgp']['email'] unless apt_repo['pgp']['email'].nil?
+    node.default[:reprepro][:pgp_fingerprint] = apt_repo['pgp']['fingerprint'] unless apt_repo['pgp']['fingerprint'].nil?
   rescue Net::HTTPServerException
     Chef::Log.warn 'Data bag not found. Using default attribute settings!'
     include_recipe 'gpg'
   end
 end
 
-ruby_block "save node data" do
-  block do
-    node.save
-  end
-  action :create
-end
+#ruby_block "save node data" do
+#  block do
+#    node.save
+#  end
+#  action :create
+#end
 
 %w{apt-utils dpkg-dev reprepro debian-keyring devscripts dput}.each do |pkg|
   package pkg
@@ -55,6 +57,7 @@ end
     owner "nobody"
     group "nogroup"
     mode "0755"
+    recursive true
   end
 end
 
@@ -63,6 +66,7 @@ end
     owner "nobody"
     group "nogroup"
     mode "0755"
+    recursive true
   end
 end
 
@@ -89,6 +93,7 @@ if(apt_repo)
     command "/bin/echo -e '#{apt_repo["pgp"]["private"]}' | gpg --import -"
     user "root"
     cwd "/root"
+    ignore_failure true
     environment "GNUPGHOME" => node[:reprepro][:gnupg_home]
     not_if "GNUPGHOME=/root/.gnupg gpg --list-secret-keys --fingerprint #{node[:reprepro][:pgp_email]} | egrep -qx '.*Key fingerprint = #{node[:reprepro][:pgp_fingerprint]}'"
   end

@@ -1,13 +1,18 @@
-<% @codenames.each do |dist| -%>
+<% @codenames.each do |codename, dist| -%>
 Origin: <%= node[:reprepro][:fqdn] %>
 Label: apt repository
-Codename: <%= dist %>
+Codename: <%= codename %>
 Architectures: <%= @architectures.join(" ") %>
-Components: <%= @pulls["component"] %>
-Description: <%= node[:reprepro][:description] %>
+Components:  <%= dist["components"].join(" ") %>
+Description: <%= dist["description"] || node[:reprepro][:description] %>
+<%- unless dist["suites"].nil? -%>
+Suite: <%= dist["suites"].join(" ") %>
+<%- end -%>
 SignWith: <%= node[:reprepro][:pgp_email] %>
-<%   unless @pulls["name"] == dist -%>
-Pull: <%= dist %>
+<%   unless @pulls["name"] == codename -%>
+Pull: <%= codename %>
+Desindices: Sources  Release . .gz /usr/bin/rredtool
+Desindices: Packages Release . .gz /usr/bin/rredtool
 <%   end -%>
-<% end -%>
 
+<% end -%>

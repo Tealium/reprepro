@@ -8,7 +8,8 @@ version          "0.2.4"
 
 depends "build-essential"
 depends "apache2"
+depends "aws_ebs_disk"
 recommends "gpg"
-recommends "apt"
+depends "apt"
 
 recipe "reprepro", "Installs and configures reprepro for an apt repository"
