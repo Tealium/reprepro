@@ -90,7 +90,7 @@ if(apt_repo)
   pgp_key = "#{apt_repo["repo_dir"]}/#{node[:reprepro][:pgp_email]}.gpg.key"
 
   execute "import packaging key" do
-    command "/bin/echo -e '#{apt_repo["pgp"]["private"]}' | gpg --import -"
+    command "/bin/echo -e '#{apt_repo["pgp"]["private"]}' | gpg --import --yes -"
     user "root"
     cwd "/root"
     ignore_failure true
