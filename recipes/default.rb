@@ -24,35 +24,33 @@ include_recipe "aws_ebs_disk"
 include_recipe "build-essential"
 include_recipe "apache2"
 
-unless(node[:reprepro][:disable_databag])
-  begin
-    app_environment = node["app_environment"] || "development"
-    apt_repo = data_bag_item("reprepro", app_environment)
-    node[:reprepro].keys.each do |key|
-      next if key.to_sym == :pgp
-      # NOTE: Use #has_key? so data bags can nil out existing values
-      node.default[:reprepro][key] = apt_repo[key] if apt_repo.has_key?(key)
-    end
-    node.default[:reprepro][:pgp_email] = apt_repo['pgp']['email'] unless apt_repo['pgp']['email'].nil?
-    node.default[:reprepro][:pgp_fingerprint] = apt_repo['pgp']['fingerprint'] unless apt_repo['pgp']['fingerprint'].nil?
-  rescue Net::HTTPServerException
-    Chef::Log.warn 'Data bag not found. Using default attribute settings!'
-    include_recipe 'gpg'
-  end
+
+execute "apt-get-update" do
+  command "apt-get update --quiet -y"
+  ignore_failure true
 end
+    app_environment = node["app_environment"] || "development"
+    Chef::Log.info("app_environment is: #{app_environment}")
+    apt_repo = data_bag_item("reprepro", app_environment)
+    Chef::Log.info("apt_repo is: #{apt_repo["repo_dir"]}")
+    Chef::Log.info("apt_repo is: #{apt_repo["incoming"]}")
+    Chef::Log.info("apt_repo is: #{apt_repo["description"]}")
+    Chef::Log.info("apt_repo is: #{apt_repo["codenames"]}")
+    Chef::Log.info("apt_repo is: #{apt_repo["allow"]}")
+    Chef::Log.info("apt_repo is: #{apt_repo["pulls"]}")
 
-#ruby_block "save node data" do
-#  block do
-#    node.save
-#  end
-#  action :create
-#end
-
-%w{apt-utils dpkg-dev reprepro debian-keyring devscripts dput}.each do |pkg|
+%w{
+  apt-utils 
+  dpkg-dev
+  reprepro
+  debian-keyring
+  devscripts
+  dput
+}.each do |pkg|
   package pkg
 end
 
-[ node[:reprepro][:repo_dir], node[:reprepro][:incoming] ].each do |dir|
+[ apt_repo["repo_dir"], apt_repo["incoming"] ].each do |dir|
   directory dir do
     owner "nobody"
     group "nogroup"
@@ -62,7 +60,7 @@ end
 end
 
 %w{ conf db dists pool tarballs }.each do |dir|
-  directory "#{node[:reprepro][:repo_dir]}/#{dir}" do
+  directory "#{apt_repo["repo_dir"]}/#{dir}" do
     owner "nobody"
     group "nogroup"
     mode "0755"
@@ -75,31 +73,36 @@ unless node[:reprepro].nil? or node[:reprepro][:fqdn].nil?
 end
 
 %w{ distributions incoming pulls }.each do |conf|
-  template "#{node[:reprepro][:repo_dir]}/conf/#{conf}" do
+  template "#{apt_repo["repo_dir"]}/conf/#{conf}" do
     source "#{conf}.erb"
     mode "0644"
     owner "nobody"
     group "nogroup"
     variables(
-      :allow => node[:reprepro][:allow],
-      :codenames => node[:reprepro][:codenames],
-      :architectures => node[:reprepro][:architectures],
-      :incoming => node[:reprepro][:incoming],
-      :pulls => node[:reprepro][:pulls]
+      :allow => apt_repo["allow"],
+      :codenames => apt_repo["codenames"],
+      :architectures => apt_repo["architectures"],
+      :incoming => apt_repo["incoming"],
+      :pulls => apt_repo["pulls"],
+      "signwith" => apt_repo["pgp"]["email"],
+      "fqdn" => apt_repo["fqdn"]
     )
   end
 end
 
 if(apt_repo)
-  pgp_key = "#{apt_repo["repo_dir"]}/#{node[:reprepro][:pgp_email]}.gpg.key"
+  Chef::Log.info('No apt_repo Clause')
+  pgp_key = "#{apt_repo["repo_dir"]}/#{apt_repo["pgp"]["email"]}.gpg.key"
 
   execute "import packaging key" do
-    command "/bin/echo -e '#{apt_repo["pgp"]["private"]}' | gpg --import --yes -"
+    #command "/bin/echo -e '#{apt_repo["pgp"]["private"]}' > /tmp/foo.txt; yes | gpg --import --yes /tmp/foo.txt; rm /tmp/foo.txt"
+    #TODO: I give up for now. Need to fix this.
+    command "/bin/echo -e '#{apt_repo["pgp"]["private"]}' > /tmp/foo.txt"
     user "root"
     cwd "/root"
     ignore_failure true
-    environment "GNUPGHOME" => node[:reprepro][:gnupg_home]
-    not_if "GNUPGHOME=/root/.gnupg gpg --list-secret-keys --fingerprint #{node[:reprepro][:pgp_email]} | egrep -qx '.*Key fingerprint = #{node[:reprepro][:pgp_fingerprint]}'"
+    environment "GNUPGHOME" => node["reprepro"]["gnupg_home"]
+    not_if "GNUPGHOME=#{node["reprepro"]["gnupg_home"]} gpg --list-secret-keys --fingerprint #{apt_repo["pgp"]["email"]} --yes | egrep -qx '.*Key fingerprint = #{apt_repo["pgp"]["fingerprint"]}'"
   end
 
   template pgp_key do
@@ -112,7 +115,8 @@ if(apt_repo)
     )
   end
 else
-  pgp_key = "#{node[:reprepro][:repo_dir]}/#{node[:gpg][:name][:email]}.gpg.key"
+  Chef::Log.info('No apt_repo Else Clause')
+  pgp_key = "#{apt_repo[:repo_dir]}/#{node[:gpg][:name][:email]}.gpg.key"
   node.default[:reprepro][:pgp_email] = node[:gpg][:name][:email]
 
   execute "sudo -u #{node[:gpg][:user]} -i gpg --armor --export #{node[:gpg][:name][:real]} > #{pgp_key}" do
@@ -125,14 +129,14 @@ else
     group "nogroup"
   end
 
-  execute "reprepro -Vb #{node[:reprepro][:repo_dir]} export" do
+  execute "reprepro -Vb #{apt_repo[:repo_dir]} export" do
     action :nothing
     subscribes :run, resources(:file => pgp_key), :immediately
-    environment "GNUPGHOME" => node[:reprepro][:gnupg_home]
+    environment "GNUPGHOME" => apt_repo[:gnupg_home]
   end
 end
 
-if(node[:reprepro][:enable_repository_on_host])
+if(apt_repo[:enable_repository_on_host])
   include_recipe 'apt'
 
   execute "apt-key add #{pgp_key}" do
@@ -145,7 +149,7 @@ if(node[:reprepro][:enable_repository_on_host])
   end
 
   apt_repository "reprepro" do
-    uri "file://#{node[:reprepro][:repo_dir]}"
+    uri "file://#{apt_repo[:repo_dir]}"
     distribution node.lsb.codename
     components ["main"]
   end
@@ -155,7 +159,10 @@ template "#{node[:apache][:dir]}/sites-available/apt_repo.conf" do
   source "apt_repo.conf.erb"
   mode 0644
   variables(
-    :repo_dir => node[:reprepro][:repo_dir]
+    :repo_dir => apt_repo["repo_dir"],
+    "email" => "devopts@tealium.com",
+    "fqdn" => apt_repo["fqdn"]
+
   )
 end
 

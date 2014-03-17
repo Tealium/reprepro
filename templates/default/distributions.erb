@@ -1,5 +1,8 @@
+<%- Chef::Log.info(" Working on #{@codenames} " ) -%>
 <% @codenames.each do |codename, dist| -%>
-Origin: <%= node[:reprepro][:fqdn] %>
+<%- Chef::Log.info(" Working on #{codename} " ) -%>
+<%- Chef::Log.info(" Working on #{dist} " ) -%>
+Origin: <%= @fqdn %>
 Label: apt repository
 Codename: <%= codename %>
 Architectures: <%= @architectures.join(" ") %>
@@ -8,11 +11,9 @@ Description: <%= dist["description"] || node[:reprepro][:description] %>
 <%- unless dist["suites"].nil? -%>
 Suite: <%= dist["suites"].join(" ") %>
 <%- end -%>
-SignWith: <%= node[:reprepro][:pgp_email] %>
+SignWith: <%= @signwith %>
 <%   unless @pulls["name"] == codename -%>
 Pull: <%= codename %>
-Desindices: Sources  Release . .gz /usr/bin/rredtool
-Desindices: Packages Release . .gz /usr/bin/rredtool
 <%   end -%>
 
 <% end -%>
