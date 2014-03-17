@@ -70,6 +70,10 @@ end
   end
 end
 
+unless node[:reprepro].nil? or node[:reprepro][:fqdn].nil?
+   apt_repo["fqdn"] = node[:reprepro][:fqdn]
+end
+
 %w{ distributions incoming pulls }.each do |conf|
   template "#{node[:reprepro][:repo_dir]}/conf/#{conf}" do
     source "#{conf}.erb"
