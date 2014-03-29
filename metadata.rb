@@ -9,11 +9,10 @@ version          "0.4.1"
 # Doesn't make sense to indicate support for non Debian platforms!
 supports "ubuntu"
 supports "debian"
-
 depends "build-essential"
 depends "apache2"
 depends "nginx"
 recommends "gpg"
-recommends "apt"
+depends "apt"
 
 recipe "reprepro", "Installs and configures reprepro for an apt repository"

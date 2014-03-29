@@ -1,13 +1,19 @@
-<% @codenames.each do |dist| -%>
-Origin: <%= node[:reprepro][:fqdn] %>
+<%- Chef::Log.info(" Working on #{@codenames} " ) -%>
+<% @codenames.each do |codename, dist| -%>
+<%- Chef::Log.info(" Working on #{codename} " ) -%>
+<%- Chef::Log.info(" Working on #{dist} " ) -%>
+Origin: <%= @fqdn %>
 Label: apt repository
-Codename: <%= dist %>
+Codename: <%= codename %>
 Architectures: <%= @architectures.join(" ") %>
-Components: <%= @pulls["component"] %>
-Description: <%= node[:reprepro][:description] %>
-SignWith: <%= node[:reprepro][:pgp_email] %>
-<%   unless @pulls["name"] == dist -%>
-Pull: <%= dist %>
+Components:  <%= dist["components"].join(" ") %>
+Description: <%= dist["description"] || node[:reprepro][:description] %>
+<%- unless dist["suites"].nil? -%>
+Suite: <%= dist["suites"].join(" ") %>
+<%- end -%>
+SignWith: <%= @signwith %>
+<%   unless @pulls["name"] == codename -%>
+Pull: <%= codename %>
 <%   end -%>
 
 <% end -%>
