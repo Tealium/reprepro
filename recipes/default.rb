@@ -18,26 +18,16 @@
 # limitations under the License.
 #
 
-#node.set[:apache][:listen_ports] = node[:apache][:listen_ports] | Array(node[:reprepro][:listen_port])
-
-include_recipe "aws_ebs_disk"
 include_recipe "build-essential"
-include_recipe "apache2"
+include_recipe 'gpg'
 
+databag_id = node['reprepro']['databag_id'] || 'main'
 
-execute "apt-get-update" do
-  command "apt-get update --quiet -y"
-  ignore_failure true
+apt_repo = unless node['reprepro']['disable_databag']
+   data_bag_item('reprepro', databag_id)
+else
+   node['reprepro']
 end
-    app_environment = node["app_environment"] || "development"
-    Chef::Log.info("app_environment is: #{app_environment}")
-    apt_repo = data_bag_item("reprepro", app_environment)
-    Chef::Log.info("apt_repo is: #{apt_repo["repo_dir"]}")
-    Chef::Log.info("apt_repo is: #{apt_repo["incoming"]}")
-    Chef::Log.info("apt_repo is: #{apt_repo["description"]}")
-    Chef::Log.info("apt_repo is: #{apt_repo["codenames"]}")
-    Chef::Log.info("apt_repo is: #{apt_repo["allow"]}")
-    Chef::Log.info("apt_repo is: #{apt_repo["pulls"]}")
 
 %w{
   apt-utils 
@@ -84,42 +74,43 @@ end
       :architectures => apt_repo["architectures"],
       :incoming => apt_repo["incoming"],
       :pulls => apt_repo["pulls"],
-      "signwith" => apt_repo["pgp"]["email"],
-      "fqdn" => apt_repo["fqdn"]
+      :signwith => apt_repo["pgp"]["email"],
+      :fqdn => apt_repo["fqdn"]
     )
   end
 end
 
-if(apt_repo)
+pgp_home = node['reprepro']['gnupg_home']
+pgp_email = apt_repo['pgp']['email'] || node[:gpg][:name][:email] 
+pgp_cmd = "gpg --homedir #{pgp_home} "
+pgp_key = "#{apt_repo["repo_dir"]}/#{pgp_email}.gpg.key"
+reprepro_cmd = "reprepro --gnupghome=#{pgp_home} -Vb #{apt_repo[:repo_dir]} "
+
+if apt_repo['pgp']['email']
+
   Chef::Log.info('No apt_repo Clause')
-  pgp_key = "#{apt_repo["repo_dir"]}/#{apt_repo["pgp"]["email"]}.gpg.key"
 
   execute "import packaging key" do
-    #command "/bin/echo -e '#{apt_repo["pgp"]["private"]}' > /tmp/foo.txt; yes | gpg --import --yes /tmp/foo.txt; rm /tmp/foo.txt"
-    #TODO: I give up for now. Need to fix this.
-    command "/bin/echo -e '#{apt_repo["pgp"]["private"]}' > /tmp/foo.txt"
+    command "/bin/echo -e '#{apt_repo["pgp"]["private"]}' | #{pgp_cmd} --import -'"
     user "root"
     cwd "/root"
-    ignore_failure true
-    environment "GNUPGHOME" => node["reprepro"]["gnupg_home"]
-    not_if "GNUPGHOME=#{node["reprepro"]["gnupg_home"]} gpg --list-secret-keys --fingerprint #{apt_repo["pgp"]["email"]} --yes | egrep -qx '.*Key fingerprint = #{apt_repo["pgp"]["fingerprint"]}'"
+  #  ignore_failure true
+    environment "GNUPGHOME" => pgp_home
+    not_if "GNUPGHOME=#{pgp_home} #{pgp_cmd} --list-secret-keys --fingerprint #{pgp_email} --yes | egrep -qx '.*Key fingerprint = #{apt_repo["pgp"]["fingerprint"]}'"
   end
-
-  template pgp_key do
-    source "pgp_key.erb"
-    mode "0644"
+  
+  file pgp_key do
+    content apt_repo["pgp"]["public"]
+    mode 0644
     owner "nobody"
     group "nogroup"
-    variables(
-      :pgp_public => apt_repo["pgp"]["public"]
-    )
   end
-else
-  Chef::Log.info('No apt_repo Else Clause')
-  pgp_key = "#{apt_repo[:repo_dir]}/#{node[:gpg][:name][:email]}.gpg.key"
-  node.default[:reprepro][:pgp_email] = node[:gpg][:name][:email]
 
-  execute "sudo -u #{node[:gpg][:user]} -i gpg --armor --export #{node[:gpg][:name][:real]} > #{pgp_key}" do
+else
+
+  Chef::Log.info('No apt_repo Else Clause')
+
+  execute "sudo -u #{node['gpg']['user']} -i #{pgp_cmd} --armor --export #{node['gpg']['name']['real']} > #{pgp_key}" do
     creates pgp_key
   end
 
@@ -129,45 +120,37 @@ else
     group "nogroup"
   end
 
-  execute "reprepro -Vb #{apt_repo[:repo_dir]} export" do
-    action :nothing
-    subscribes :run, resources(:file => pgp_key), :immediately
-    environment "GNUPGHOME" => apt_repo[:gnupg_home]
-  end
 end
 
-if(apt_repo[:enable_repository_on_host])
+execute "#{reprepro_cmd} export" do
+  action :nothing
+  subscribes :run, resources(:file => pgp_key), :immediately
+  environment "GNUPGHOME" => pgp_home
+end
+
+execute "#{reprepro_cmd} createsymlinks" do
+  action :nothing
+  subscribes :run, resources(:template => apt_rep['repo_dir']+'/conf/distributions' ), :immediately
+  environment "GNUPGHOME" => pgp_home
+end
+
+if apt_repo[:enable_repository_on_host]
   include_recipe 'apt'
 
   execute "apt-key add #{pgp_key}" do
     action :nothing
-    if(apt_repo)
-      subscribes :run, resources(:template => pgp_key), :immediately
-    else
-      subscribes :run, resources(:file => pgp_key), :immediately
-    end
+     subscribes :run, "file[#{pgp_key}]", :immediately
   end
 
   apt_repository "reprepro" do
     uri "file://#{apt_repo[:repo_dir]}"
-    distribution node.lsb.codename
+    distribution node['lsb']['codename']
     components ["main"]
   end
 end
 
-template "#{node[:apache][:dir]}/sites-available/apt_repo.conf" do
-  source "apt_repo.conf.erb"
-  mode 0644
-  variables(
-    :repo_dir => apt_repo["repo_dir"],
-    "email" => "devopts@tealium.com",
-    "fqdn" => apt_repo["fqdn"]
-
-  )
-end
-
-apache_site "apt_repo.conf"
-
-apache_site "000-default" do
-  enable false
+begin
+  include_recipe "reprepro::#{node['reprepro']['server']}"
+rescue Chef::Exceptions::RecipeNotFound
+  Chef::Log.warn "Missing recipe for #{node['reprepro']['server']}, only 'nginx'or 'apache2' are available"
 end
