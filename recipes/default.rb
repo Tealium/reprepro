@@ -19,7 +19,6 @@
 #
 
 include_recipe "build-essential"
-include_recipe 'gpg'
 
 databag_id = node['reprepro']['databag_id'] || 'main'
 
@@ -108,7 +107,8 @@ if apt_repo['pgp']['email']
 
 else
 
-  Chef::Log.info('No apt_repo Else Clause')
+  Chef::Log.info('No apt_repo Else Clause going to use gpg')
+  include_recipe 'gpg'
 
   execute "sudo -u #{node['gpg']['user']} -i #{pgp_cmd} --armor --export #{node['gpg']['name']['real']} > #{pgp_key}" do
     creates pgp_key
