@@ -82,8 +82,8 @@ end
 pgp_home = node['reprepro']['gnupg_home']
 pgp_email = apt_repo['pgp']['email'] || node[:gpg][:name][:email] 
 pgp_cmd = "gpg --homedir #{pgp_home} "
-pgp_key = "#{apt_repo["repo_dir"]}/#{pgp_email}.gpg.key"
-reprepro_cmd = "reprepro --gnupghome=#{pgp_home} -Vb #{apt_repo[:repo_dir]} "
+pgp_key = "#{apt_repo['repo_dir']}/#{pgp_email}.gpg.key"
+reprepro_cmd = "reprepro --gnupghome=#{pgp_home} -Vb #{apt_repo['repo_dir']} "
 
 if apt_repo['pgp']['email']
 
@@ -130,7 +130,7 @@ end
 
 execute "#{reprepro_cmd} createsymlinks" do
   action :nothing
-  subscribes :run, resources(:template => apt_rep['repo_dir']+'/conf/distributions' ), :immediately
+  subscribes :run, resources(:template => apt_repo['repo_dir']+'/conf/distributions' ), :immediately
   environment "GNUPGHOME" => pgp_home
 end
 
