@@ -20,10 +20,8 @@
 
 include_recipe "build-essential"
 
-databag_id = node['reprepro']['databag_id'] || 'main'
-
 apt_repo = unless node['reprepro']['disable_databag']
-   data_bag_item('reprepro', databag_id)
+   data_bag_item('reprepro', node['reprepro']['databag_id'])
 else
    node['reprepro']
 end
@@ -90,10 +88,10 @@ if apt_repo['pgp']['email']
   Chef::Log.info('No apt_repo Clause')
 
   execute "import packaging key" do
-    command "/bin/echo -e '#{apt_repo["pgp"]["private"]}' | #{pgp_cmd} --import -'"
+    command "/bin/echo -e '#{apt_repo["pgp"]["private"]}' | #{pgp_cmd} --import -"
     user "root"
     cwd "/root"
-  #  ignore_failure true
+    ignore_failure true
     environment "GNUPGHOME" => pgp_home
     not_if "GNUPGHOME=#{pgp_home} #{pgp_cmd} --list-secret-keys --fingerprint #{pgp_email} --yes | egrep -qx '.*Key fingerprint = #{apt_repo["pgp"]["fingerprint"]}'"
   end

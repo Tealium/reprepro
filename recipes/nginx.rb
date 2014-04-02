@@ -22,13 +22,19 @@
 
 include_recipe "nginx"
 
+apt_repo = unless node['reprepro']['disable_databag']
+   data_bag_item('reprepro', node['reprepro']['databag_id'])
+else
+   node['reprepro']
+end
+
 template "#{node[:nginx][:dir]}/sites-available/apt_repo" do
   source "apt_repo.nginx.erb"
   mode 0644
   owner "root"
   group "root"
   variables(
-      :repo_dir => node['reprepro']['repo_dir']
+      :repo_dir => apt_repo['repo_dir']
   )
   notifies :reload, resources(:service => 'nginx')
 end

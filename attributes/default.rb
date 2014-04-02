@@ -12,6 +12,8 @@ default['reprepro']['architectures'] = %w(i386 amd64)
 default['reprepro']['gnupg_home'] = '/root/.gnupg'
 default['reprepro']['enable_repository_on_host'] = false
 default['reprepro']['disable_databag'] = false
+default['reprepro']['databag_id'] = 'main'
+
 
 default['reprepro']['nginx']['listen_port'] = 80
 default['reprepro']['nginx']['ssl'] = false
